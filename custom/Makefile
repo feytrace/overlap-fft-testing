@@ -1,8 +1,11 @@
+# Makefile for CUDA Optimized 2D Solver
 
 # Compiler and flags
 NVCC := nvcc
 CXX := g++
 
+# CUDA architecture (adjust based on your GPU)
+# Common options:
 # sm_50: Maxwell (GTX 9xx, Titan X)
 # sm_60: Pascal (GTX 10xx, Titan Xp)
 # sm_70: Volta (V100, Titan V)
@@ -13,18 +16,19 @@ CXX := g++
 # sm_90: Hopper (H100)
 CUDA_ARCH := sm_75
 
+# Optimization flags
 NVCC_FLAGS := -O3 -arch=$(CUDA_ARCH) --use_fast_math -Xcompiler -Wall
 NVCC_DEBUG_FLAGS := -g -G -arch=$(CUDA_ARCH) -Xcompiler -Wall
-GP_TARGET := $(BIN_DIR)/gp_solver
 
 # Directories
 SRC_DIR := .
 OBJ_DIR := obj
 BIN_DIR := bin
 
-# Target executable
+# Target executables
 TARGET := $(BIN_DIR)/cuda_solver
 DEBUG_TARGET := $(BIN_DIR)/cuda_solver_debug
+GP_TARGET := $(BIN_DIR)/gp_solver
 
 # Source files (change this to match your .cu filename)
 SOURCES := solver.cu
@@ -33,11 +37,6 @@ SOURCES := solver.cu
 OBJECTS := $(OBJ_DIR)/solver.o
 DEBUG_OBJECTS := $(OBJ_DIR)/solver_debug.o
 
-gp: directories
-	$(NVCC) $(NVCC_FLAGS) gp_cosine_kernel.cu -o $(GP_TARGET)
-
-run-gp: gp
-	./$(GP_TARGET)
 # Default target
 .PHONY: all
 all: directories $(TARGET)
@@ -140,7 +139,9 @@ help:
 	@echo "Targets:"
 	@echo "  make              - Build release version"
 	@echo "  make debug        - Build debug version with symbols"
+	@echo "  make gp           - Build Gaussian Process solver"
 	@echo "  make run          - Build and run the program"
+	@echo "  make run-gp       - Build and run GP solver"
 	@echo "  make run-streams  - Test with different stream counts"
 	@echo "  make profile      - Profile with nvprof"
 	@echo "  make profile-ncu  - Profile with Nsight Compute"
@@ -154,6 +155,18 @@ help:
 	@echo "  CUDA_ARCH         - Target GPU architecture (current: $(CUDA_ARCH))"
 	@echo ""
 	@echo "Example: make CUDA_ARCH=sm_80"
+
+# GP Solver targets
+.PHONY: gp
+gp: directories
+	@echo "Building Gaussian Process solver..."
+	$(NVCC) $(NVCC_FLAGS) gp_cosine_kernel.cu -o $(GP_TARGET)
+	@echo "Build complete: $(GP_TARGET)"
+
+.PHONY: run-gp
+run-gp: gp
+	@echo "Running $(GP_TARGET)..."
+	@./$(GP_TARGET)
 
 # Detect CUDA architecture automatically (optional)
 .PHONY: detect-arch
@@ -194,11 +207,3 @@ info:
 	@echo ""
 	@echo "GPU Info:"
 	@nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv
-
-.PHONY: visualize
-visualize: run
-	python visualize_results.py 100 100
-
-.PHONY: visualize-full
-visualize-full: run
-	python visualize_results.py 6000 6050 solution.bin
