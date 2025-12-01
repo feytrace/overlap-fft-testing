@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Visualization tool for CUDA 2D Poisson Solver Results
-Generates comparison plots between computed and analytical solutions
+Visualization tool for CUDA Gaussian Process Results
+Generates comparison plots between GP predictions and true function
 """
 
 import numpy as np
@@ -10,189 +10,267 @@ from matplotlib import cm
 from mpl_toolkits.mplot3d import Axes3D
 import sys
 
-def generate_analytical_solution(Nx, Ny):
-    """Generate the analytical solution for comparison"""
-    hx = 1.0 / (Nx + 1)
-    hy = 1.0 / (Ny + 1)
-    
-    x = np.linspace(hx, 1.0 - hx, Nx)
-    y = np.linspace(hy, 1.0 - hy, Ny)
-    X, Y = np.meshgrid(x, y)
-    
-    # Analytical solution: u(x,y) = sin(pi*x)*sin(pi*y)
-    U_analytical = np.sin(np.pi * X) * np.sin(np.pi * Y)
-    
-    return X, Y, U_analytical
+def generate_true_function(X, Y):
+    """Generate the true function: f(x,y) = sin(x) * sin(2y)"""
+    return np.sin(X) * np.sin(2.0 * Y)
 
-def read_solution_from_file(filename, Nx, Ny):
-    """Read solution from binary or text file"""
+def read_data_from_file(filename):
+    """Read GP training/test data from file"""
     try:
-        # Try reading as binary double precision
-        data = np.fromfile(filename, dtype=np.float64)
-        if len(data) == Nx * Ny:
-            return data.reshape((Ny, Nx))
-    except:
-        pass
-    
-    try:
-        # Try reading as text
         data = np.loadtxt(filename)
-        if data.size == Nx * Ny:
-            return data.reshape((Ny, Nx))
+        return data
     except:
-        pass
-    
-    return None
+        print("Error reading file: {}".format(filename))
+        return None
 
-def create_comparison_plots(Nx, Ny, U_computed=None, save_prefix="solver_results"):
-    """Create comprehensive comparison plots"""
+def create_gp_visualization(X_train=None, Y_train=None, f_train=None,
+                            X_test=None, Y_test=None, mu_pred=None, 
+                            save_prefix="gp_results"):
+    """Create comprehensive GP visualization"""
     
-    # Generate analytical solution
-    X, Y, U_analytical = generate_analytical_solution(Nx, Ny)
+    # If no data provided, generate synthetic data for demonstration
+    if X_train is None:
+        print("Generating synthetic data for demonstration...")
+        np.random.seed(42)
+        N_train = 50
+        X_train = np.random.rand(N_train)
+        Y_train = np.random.rand(N_train)
+        f_train = generate_true_function(X_train, Y_train)
+        f_train += np.random.randn(N_train) * 0.1  # Add noise
+        
+        N_test = 30
+        X_test = np.linspace(0, 1, N_test)
+        Y_test = np.ones(N_test) * 0.5
+        mu_pred = generate_true_function(X_test, Y_test)
     
-    # If no computed solution provided, use analytical for demonstration
-    if U_computed is None:
-        print("No computed solution provided, using analytical solution for demonstration")
-        U_computed = U_analytical
-    
-    # Compute error
-    error = U_computed - U_analytical
-    error_abs = np.abs(error)
+    # Create fine grid for true function surface
+    x_grid = np.linspace(0, 1, 100)
+    y_grid = np.linspace(0, 1, 100)
+    X_grid, Y_grid = np.meshgrid(x_grid, y_grid)
+    Z_true = generate_true_function(X_grid, Y_grid)
     
     # Create figure with subplots
     fig = plt.figure(figsize=(20, 12))
     
     # ============================================================
-    # 1. 3D Surface Plot - Analytical Solution
+    # 1. 3D Surface - True Function
     # ============================================================
     ax1 = fig.add_subplot(2, 4, 1, projection='3d')
-    surf1 = ax1.plot_surface(X, Y, U_analytical, cmap=cm.viridis, 
-                             linewidth=0, antialiased=True, alpha=0.9)
+    surf1 = ax1.plot_surface(X_grid, Y_grid, Z_true, cmap=cm.viridis,
+                             linewidth=0, antialiased=True, alpha=0.8)
+    ax1.scatter(X_train, Y_train, f_train, c='red', s=50, 
+                marker='o', edgecolors='black', linewidths=1.5,
+                label='Training Data')
     ax1.set_xlabel('X', fontsize=10)
     ax1.set_ylabel('Y', fontsize=10)
-    ax1.set_zlabel('U', fontsize=10)
-    ax1.set_title('Analytical Solution\n$u(x,y) = sin(\pi x)sin(\pi y)$', fontsize=11, fontweight='bold')
-    ax1.view_init(elev=30, azim=45)
+    ax1.set_zlabel('f(x,y)', fontsize=10)
+    ax1.set_title('True Function: sin(x) * sin(2y)\n+ Training Points', 
+                  fontsize=11, fontweight='bold')
+    ax1.view_init(elev=25, azim=45)
+    ax1.legend(loc='upper right', fontsize=8)
     fig.colorbar(surf1, ax=ax1, shrink=0.5, aspect=5)
     
     # ============================================================
-    # 2. 3D Surface Plot - Computed Solution
+    # 2. 3D Surface - True Function (Different Angle)
     # ============================================================
     ax2 = fig.add_subplot(2, 4, 2, projection='3d')
-    surf2 = ax2.plot_surface(X, Y, U_computed, cmap=cm.viridis, 
-                             linewidth=0, antialiased=True, alpha=0.9)
+    surf2 = ax2.plot_surface(X_grid, Y_grid, Z_true, cmap=cm.viridis,
+                             linewidth=0, antialiased=True, alpha=0.8)
+    ax2.scatter(X_train, Y_train, f_train, c='red', s=50, 
+                marker='o', edgecolors='black', linewidths=1.5)
     ax2.set_xlabel('X', fontsize=10)
     ax2.set_ylabel('Y', fontsize=10)
-    ax2.set_zlabel('U', fontsize=10)
-    ax2.set_title('Computed Solution\n(CUDA Solver)', fontsize=11, fontweight='bold')
-    ax2.view_init(elev=30, azim=45)
+    ax2.set_zlabel('f(x,y)', fontsize=10)
+    ax2.set_title('True Function (Rotated View)', fontsize=11, fontweight='bold')
+    ax2.view_init(elev=25, azim=135)
     fig.colorbar(surf2, ax=ax2, shrink=0.5, aspect=5)
     
     # ============================================================
-    # 3. 3D Surface Plot - Absolute Error
+    # 3. Contour Plot - True Function with Training Points
     # ============================================================
-    ax3 = fig.add_subplot(2, 4, 3, projection='3d')
-    surf3 = ax3.plot_surface(X, Y, error_abs, cmap=cm.hot, 
-                             linewidth=0, antialiased=True, alpha=0.9)
+    ax3 = fig.add_subplot(2, 4, 3)
+    contour1 = ax3.contourf(X_grid, Y_grid, Z_true, levels=20, cmap=cm.viridis)
+    ax3.scatter(X_train, Y_train, c=f_train, s=100, 
+                marker='o', edgecolors='black', linewidths=2,
+                cmap=cm.viridis, vmin=Z_true.min(), vmax=Z_true.max())
     ax3.set_xlabel('X', fontsize=10)
     ax3.set_ylabel('Y', fontsize=10)
-    ax3.set_zlabel('Error', fontsize=10)
-    ax3.set_title('Absolute Error\nMax: {:.2e}'.format(np.max(error_abs)), fontsize=11, fontweight='bold')
-    ax3.view_init(elev=30, azim=45)
-    fig.colorbar(surf3, ax=ax3, shrink=0.5, aspect=5)
+    ax3.set_title('True Function (Contour)\n+ Training Data', 
+                  fontsize=11, fontweight='bold')
+    ax3.set_aspect('equal')
+    fig.colorbar(contour1, ax=ax3)
     
     # ============================================================
-    # 4. Contour Plot - Analytical Solution
+    # 4. GP Prediction along y=0.5 slice
     # ============================================================
     ax4 = fig.add_subplot(2, 4, 4)
-    contour1 = ax4.contourf(X, Y, U_analytical, levels=20, cmap=cm.viridis)
-    ax4.set_xlabel('X', fontsize=10)
-    ax4.set_ylabel('Y', fontsize=10)
-    ax4.set_title('Analytical (Contour)', fontsize=11, fontweight='bold')
-    ax4.set_aspect('equal')
-    fig.colorbar(contour1, ax=ax4)
+    # True function along slice
+    x_slice = np.linspace(0, 1, 200)
+    y_slice = 0.5
+    z_slice_true = generate_true_function(x_slice, y_slice)
+    
+    ax4.plot(x_slice, z_slice_true, 'b-', linewidth=2.5, label='True Function')
+    
+    # Training points on this slice (within tolerance)
+    tolerance = 0.1
+    mask = np.abs(Y_train - y_slice) < tolerance
+    if np.any(mask):
+        ax4.scatter(X_train[mask], f_train[mask], c='red', s=100, 
+                   marker='o', edgecolors='black', linewidths=2,
+                   label='Training Data', zorder=5)
+    
+    # GP predictions
+    if X_test is not None and mu_pred is not None:
+        mask_test = np.abs(Y_test - y_slice) < tolerance
+        if np.any(mask_test):
+            ax4.plot(X_test[mask_test], mu_pred[mask_test], 'g--', 
+                    linewidth=2, label='GP Prediction', alpha=0.8)
+            ax4.scatter(X_test[mask_test], mu_pred[mask_test], c='green', 
+                       s=60, marker='s', edgecolors='black', linewidths=1.5,
+                       zorder=5)
+    
+    ax4.set_xlabel('X', fontsize=11)
+    ax4.set_ylabel('f(x, 0.5)', fontsize=11)
+    ax4.set_title('Cross-section at y = 0.5', fontsize=11, fontweight='bold')
+    ax4.legend(fontsize=9, loc='best')
+    ax4.grid(True, alpha=0.3)
     
     # ============================================================
-    # 5. Contour Plot - Computed Solution
+    # 5. GP Prediction along x=0.5 slice
     # ============================================================
     ax5 = fig.add_subplot(2, 4, 5)
-    contour2 = ax5.contourf(X, Y, U_computed, levels=20, cmap=cm.viridis)
-    ax5.set_xlabel('X', fontsize=10)
-    ax5.set_ylabel('Y', fontsize=10)
-    ax5.set_title('Computed (Contour)', fontsize=11, fontweight='bold')
-    ax5.set_aspect('equal')
-    fig.colorbar(contour2, ax=ax5)
+    # True function along slice
+    x_slice2 = 0.5
+    y_slice2 = np.linspace(0, 1, 200)
+    z_slice_true2 = generate_true_function(x_slice2, y_slice2)
+    
+    ax5.plot(y_slice2, z_slice_true2, 'b-', linewidth=2.5, label='True Function')
+    
+    # Training points on this slice
+    mask2 = np.abs(X_train - x_slice2) < tolerance
+    if np.any(mask2):
+        ax5.scatter(Y_train[mask2], f_train[mask2], c='red', s=100, 
+                   marker='o', edgecolors='black', linewidths=2,
+                   label='Training Data', zorder=5)
+    
+    # GP predictions
+    if X_test is not None and mu_pred is not None:
+        mask_test2 = np.abs(X_test - x_slice2) < tolerance
+        if np.any(mask_test2):
+            ax5.plot(Y_test[mask_test2], mu_pred[mask_test2], 'g--', 
+                    linewidth=2, label='GP Prediction', alpha=0.8)
+            ax5.scatter(Y_test[mask_test2], mu_pred[mask_test2], c='green', 
+                       s=60, marker='s', edgecolors='black', linewidths=1.5,
+                       zorder=5)
+    
+    ax5.set_xlabel('Y', fontsize=11)
+    ax5.set_ylabel('f(0.5, y)', fontsize=11)
+    ax5.set_title('Cross-section at x = 0.5', fontsize=11, fontweight='bold')
+    ax5.legend(fontsize=9, loc='best')
+    ax5.grid(True, alpha=0.3)
     
     # ============================================================
-    # 6. Contour Plot - Error
+    # 6. Training Data Distribution
     # ============================================================
     ax6 = fig.add_subplot(2, 4, 6)
-    contour3 = ax6.contourf(X, Y, error_abs, levels=20, cmap=cm.hot)
-    ax6.set_xlabel('X', fontsize=10)
-    ax6.set_ylabel('Y', fontsize=10)
-    ax6.set_title('Absolute Error (Contour)', fontsize=11, fontweight='bold')
+    scatter = ax6.scatter(X_train, Y_train, c=f_train, s=150, 
+                          marker='o', edgecolors='black', linewidths=2,
+                          cmap=cm.viridis)
+    ax6.set_xlabel('X', fontsize=11)
+    ax6.set_ylabel('Y', fontsize=11)
+    ax6.set_title('Training Data Distribution\n({} points)'.format(len(X_train)), 
+                  fontsize=11, fontweight='bold')
+    ax6.set_xlim([0, 1])
+    ax6.set_ylim([0, 1])
     ax6.set_aspect('equal')
-    fig.colorbar(contour3, ax=ax6)
+    ax6.grid(True, alpha=0.3)
+    fig.colorbar(scatter, ax=ax6, label='f(x,y)')
     
     # ============================================================
-    # 7. Cross-section at y=0.5
+    # 7. Prediction Error (if test data available)
     # ============================================================
     ax7 = fig.add_subplot(2, 4, 7)
-    mid_y = Ny // 2
-    ax7.plot(X[mid_y, :], U_analytical[mid_y, :], 'b-', linewidth=2, label='Analytical')
-    ax7.plot(X[mid_y, :], U_computed[mid_y, :], 'r--', linewidth=2, label='Computed')
-    ax7.set_xlabel('X', fontsize=10)
-    ax7.set_ylabel('U', fontsize=10)
-    ax7.set_title('Cross-section at y={:.2f}'.format(Y[mid_y, 0]), fontsize=11, fontweight='bold')
-    ax7.legend(fontsize=9)
-    ax7.grid(True, alpha=0.3)
+    if X_test is not None and mu_pred is not None:
+        # Compute true values at test points
+        f_test_true = generate_true_function(X_test, Y_test)
+        errors = np.abs(mu_pred - f_test_true)
+        
+        scatter7 = ax7.scatter(X_test, Y_test, c=errors, s=150,
+                              marker='s', edgecolors='black', linewidths=2,
+                              cmap=cm.hot)
+        ax7.set_xlabel('X', fontsize=11)
+        ax7.set_ylabel('Y', fontsize=11)
+        ax7.set_title('Absolute Prediction Error\nMax: {:.4f}'.format(np.max(errors)), 
+                      fontsize=11, fontweight='bold')
+        ax7.set_xlim([0, 1])
+        ax7.set_ylim([0, 1])
+        ax7.set_aspect('equal')
+        ax7.grid(True, alpha=0.3)
+        fig.colorbar(scatter7, ax=ax7, label='|error|')
+    else:
+        ax7.text(0.5, 0.5, 'No test data available', 
+                horizontalalignment='center', verticalalignment='center',
+                fontsize=12, transform=ax7.transAxes)
+        ax7.axis('off')
     
     # ============================================================
-    # 8. Error Statistics
+    # 8. Statistics
     # ============================================================
     ax8 = fig.add_subplot(2, 4, 8)
     ax8.axis('off')
     
     # Compute statistics
-    max_error = np.max(error_abs)
-    mean_error = np.mean(error_abs)
-    l2_error = np.sqrt(np.mean(error**2))
-    relative_error = l2_error / np.sqrt(np.mean(U_analytical**2))
-    
     stats_text = """
-    ERROR STATISTICS
+    GAUSSIAN PROCESS STATISTICS
     ════════════════════════════════
     
-    Grid Size: {} × {}
-    Total Points: {:,}
+    Training Data:
+        Points: {}
+        X range: [{:.3f}, {:.3f}]
+        Y range: [{:.3f}, {:.3f}]
+        f range: [{:.3f}, {:.3f}]
+    """.format(len(X_train), 
+               np.min(X_train), np.max(X_train),
+               np.min(Y_train), np.max(Y_train),
+               np.min(f_train), np.max(f_train))
     
-    Max Absolute Error:
-        {:.6e}
+    if X_test is not None and mu_pred is not None:
+        f_test_true = generate_true_function(X_test, Y_test)
+        errors = np.abs(mu_pred - f_test_true)
+        rmse = np.sqrt(np.mean((mu_pred - f_test_true)**2))
+        mae = np.mean(errors)
+        max_error = np.max(errors)
+        
+        stats_text += """
+    Test Data:
+        Points: {}
+        RMSE: {:.6f}
+        MAE: {:.6f}
+        Max Error: {:.6f}
     
-    Mean Absolute Error:
-        {:.6e}
+    True Function:
+        f(x,y) = sin(x) * sin(2y)
+        
+    Kernel:
+        Cosine kernel
+        K(x,x') = σ² cos(k₀ₓΔx) cos(k₀ᵧΔy)
+        """.format(len(X_test), rmse, mae, max_error)
+    else:
+        stats_text += """
     
-    L2 Error Norm:
-        {:.6e}
+    True Function:
+        f(x,y) = sin(x) * sin(2y)
+        
+    Kernel:
+        Cosine kernel
+        K(x,x') = σ² cos(k₀ₓΔx) cos(k₀ᵧΔy)
+        """
     
-    Relative L2 Error:
-        {:.6e}
-        ({:.4f}%)
-    
-    Min Computed: {:.6f}
-    Max Computed: {:.6f}
-    
-    Min Analytical: {:.6f}
-    Max Analytical: {:.6f}
-    """.format(Nx, Ny, Nx * Ny, max_error, mean_error, l2_error, 
-               relative_error, relative_error*100, np.min(U_computed), 
-               np.max(U_computed), np.min(U_analytical), np.max(U_analytical))
-    
-    ax8.text(0.1, 0.5, stats_text, fontsize=10, family='monospace',
+    ax8.text(0.1, 0.5, stats_text, fontsize=9, family='monospace',
              verticalalignment='center', bbox=dict(boxstyle='round', 
-             facecolor='wheat', alpha=0.3))
+             facecolor='lightblue', alpha=0.3))
     
-    plt.suptitle('CUDA 2D Poisson Solver - Results Comparison', 
+    plt.suptitle('Gaussian Process with Cosine Kernel - Visualization', 
                  fontsize=16, fontweight='bold', y=0.98)
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     
@@ -208,38 +286,27 @@ def create_comparison_plots(Nx, Ny, U_computed=None, save_prefix="solver_results
     
     return fig
 
-def create_convergence_plot(sizes, errors, save_name="convergence.png"):
-    """Create convergence plot for different grid sizes"""
+def create_convergence_plot(N_trains, rmses, maes, save_name="gp_convergence.png"):
+    """Create convergence plot for different training set sizes"""
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
     
-    # Log-log plot
-    ax1.loglog(sizes, errors, 'bo-', linewidth=2, markersize=8, label='Computed Error')
-    
-    # Add reference lines
-    h = 1.0 / np.array(sizes)
-    ax1.loglog(sizes, h**2 * errors[0] / (h[0]**2), 'r--', 
-               linewidth=1.5, label='$O(h^2)$ reference')
-    
-    ax1.set_xlabel('Grid Size N', fontsize=12)
-    ax1.set_ylabel('L2 Error', fontsize=12)
-    ax1.set_title('Convergence Analysis (Log-Log)', fontsize=13, fontweight='bold')
+    # RMSE vs training size
+    ax1.plot(N_trains, rmses, 'bo-', linewidth=2, markersize=8, label='RMSE')
+    ax1.plot(N_trains, maes, 'rs-', linewidth=2, markersize=8, label='MAE')
+    ax1.set_xlabel('Number of Training Points', fontsize=12)
+    ax1.set_ylabel('Error', fontsize=12)
+    ax1.set_title('GP Error vs Training Size', fontsize=13, fontweight='bold')
     ax1.legend(fontsize=10)
     ax1.grid(True, alpha=0.3)
     
-    # Convergence rate plot
-    if len(sizes) > 1:
-        rates = []
-        for i in range(1, len(sizes)):
-            rate = np.log(errors[i-1] / errors[i]) / np.log(sizes[i] / sizes[i-1])
-            rates.append(rate)
-        
-        ax2.plot(sizes[1:], rates, 'go-', linewidth=2, markersize=8)
-        ax2.axhline(y=2.0, color='r', linestyle='--', linewidth=1.5, label='Expected: 2.0')
-        ax2.set_xlabel('Grid Size N', fontsize=12)
-        ax2.set_ylabel('Convergence Rate', fontsize=12)
-        ax2.set_title('Observed Convergence Rate', fontsize=13, fontweight='bold')
-        ax2.legend(fontsize=10)
-        ax2.grid(True, alpha=0.3)
+    # Log-log plot
+    ax2.loglog(N_trains, rmses, 'bo-', linewidth=2, markersize=8, label='RMSE')
+    ax2.loglog(N_trains, maes, 'rs-', linewidth=2, markersize=8, label='MAE')
+    ax2.set_xlabel('Number of Training Points', fontsize=12)
+    ax2.set_ylabel('Error (log scale)', fontsize=12)
+    ax2.set_title('GP Convergence (Log-Log)', fontsize=13, fontweight='bold')
+    ax2.legend(fontsize=10)
+    ax2.grid(True, alpha=0.3, which='both')
     
     plt.tight_layout()
     plt.savefig(save_name, dpi=150, bbox_inches='tight')
@@ -250,35 +317,44 @@ def create_convergence_plot(sizes, errors, save_name="convergence.png"):
 def main():
     """Main function"""
     print("=" * 60)
-    print("CUDA 2D Poisson Solver - Visualization Tool")
+    print("CUDA Gaussian Process - Visualization Tool")
     print("=" * 60)
-    
-    # Default parameters
-    Nx = 100
-    Ny = 100
-    solution_file = None
     
     # Parse command line arguments
     if len(sys.argv) > 1:
-        Nx = int(sys.argv[1])
-    if len(sys.argv) > 2:
-        Ny = int(sys.argv[2])
-    if len(sys.argv) > 3:
-        solution_file = sys.argv[3]
-    
-    print("\nGrid Size: {} × {}".format(Nx, Ny))
-    
-    # Read computed solution if provided
-    U_computed = None
-    if solution_file:
-        print("Reading solution from: {}".format(solution_file))
-        U_computed = read_solution_from_file(solution_file, Nx, Ny)
-        if U_computed is None:
-            print("Warning: Could not read solution file, using analytical solution")
-    
-    # Create comparison plots
-    print("\nGenerating comparison plots...")
-    fig = create_comparison_plots(Nx, Ny, U_computed)
+        train_file = sys.argv[1]
+        print("\nReading training data from: {}".format(train_file))
+        train_data = read_data_from_file(train_file)
+        
+        if train_data is not None and train_data.shape[1] >= 3:
+            X_train = train_data[:, 0]
+            Y_train = train_data[:, 1]
+            f_train = train_data[:, 2]
+            
+            X_test = None
+            Y_test = None
+            mu_pred = None
+            
+            if len(sys.argv) > 2:
+                test_file = sys.argv[2]
+                print("Reading test data from: {}".format(test_file))
+                test_data = read_data_from_file(test_file)
+                
+                if test_data is not None and test_data.shape[1] >= 3:
+                    X_test = test_data[:, 0]
+                    Y_test = test_data[:, 1]
+                    mu_pred = test_data[:, 2]
+            
+            print("\nGenerating visualization...")
+            fig = create_gp_visualization(X_train, Y_train, f_train,
+                                         X_test, Y_test, mu_pred)
+        else:
+            print("Error: Invalid data format")
+            print("Expected format: X Y f (one point per line)")
+            return
+    else:
+        print("\nNo data files provided, generating demonstration...")
+        fig = create_gp_visualization()
     
     # Show plot
     print("\nDisplaying plots...")
