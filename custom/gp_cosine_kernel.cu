@@ -34,8 +34,7 @@ __global__ void compute_cosine_kernel_matrix(double *K, double *X, double *Y,
     K[i * N + j] = sigma2 * cos_x * cos_y;
 }
 
-
-// Adding Jitter
+// Add noise to diagonal (K = K + σ²_noise * I)
 __global__ void add_noise_diagonal(double *K, int N, double noise_var) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     
@@ -44,8 +43,10 @@ __global__ void add_noise_diagonal(double *K, int N, double noise_var) {
     K[idx * N + idx] += noise_var;
 }
 
+// Cholesky decomposition kernel (sequential, but can be used per stream chunk)
 __global__ void cholesky_decomposition_chunk(double *L, int N, int start_row, int end_row) {
-    // trying row-wise chunks
+    // This is a simplified version - full Cholesky needs careful synchronization
+    // For overlapping, we'll break this into row-wise chunks
     
     int tid = threadIdx.x;
     
@@ -101,6 +102,7 @@ __global__ void backward_substitution(double *L, double *y, double *x, int N) {
     x[i] = (y[i] - sum) / L[i * N + i];
 }
 
+// Compute predictive mean: μ* = K*^T × K^{-1} × y
 __global__ void predict_mean_kernel(double *mu_pred, double *K_star, 
                                      double *alpha, int N_train, int N_test) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -205,6 +207,7 @@ public:
     }
     
     void fit(double *X_train, double *Y_train, double *f_train) {
+        // Transfer training data to device with overlapping
         int chunk_size = (N_train + nStreams - 1) / nStreams;
         
         for (int s = 0; s < nStreams; s++) {
@@ -225,6 +228,7 @@ public:
                                        cudaMemcpyHostToDevice, streams[s]));
         }
         
+        // Compute kernel matrix K
         dim3 block(16, 16);
         dim3 grid((N_train + block.x - 1) / block.x,
                   (N_train + block.y - 1) / block.y);
@@ -233,18 +237,23 @@ public:
                                                        N_train, sigma2, k0_x, k0_y);
         CUDA_CHECK(cudaGetLastError());
         
+        // Add noise to diagonal
         int threads = 256;
         int blocks = (N_train + threads - 1) / threads;
         add_noise_diagonal<<<blocks, threads>>>(d_K, N_train, noise_var);
         CUDA_CHECK(cudaGetLastError());
         
+        // Copy K to L for Cholesky
         CUDA_CHECK(cudaMemcpy(d_L, d_K, N_train * N_train * sizeof(double),
                               cudaMemcpyDeviceToDevice));
         
+        // Cholesky decomposition (simplified - for production use cuSOLVER)
+        // Here we do it on CPU for stability
         double *h_L = new double[N_train * N_train];
         CUDA_CHECK(cudaMemcpy(h_L, d_L, N_train * N_train * sizeof(double),
                               cudaMemcpyDeviceToHost));
         
+        // CPU Cholesky
         for (int i = 0; i < N_train; i++) {
             for (int j = 0; j < i; j++) {
                 double sum = 0.0;
@@ -427,8 +436,8 @@ int main(int argc, char **argv) {
     for (int i = 0; i < N_train; i++) {
         X_train[i] = (double)rand() / RAND_MAX;
         Y_train[i] = (double)rand() / RAND_MAX;
-        // True function: f(x,y) = sin(2πx) * cos(2πy)
-        f_train[i] = sin(2.0 * M_PI * X_train[i]) * cos(2.0 * M_PI * Y_train[i]);
+        // True function: f(x,y) = sin(x) * sin(2y)
+        f_train[i] = sin(X_train[i]) * sin(2.0 * Y_train[i]);
         // Add noise
         f_train[i] += (double)rand() / RAND_MAX * 0.1 - 0.05;
     }
@@ -467,7 +476,7 @@ int main(int argc, char **argv) {
     printf("  x      y      pred    true\n");
     printf("-----------------------------------\n");
     for (int i = 0; i < min(10, N_test); i++) {
-        double true_val = sin(2.0 * M_PI * X_test[i]) * cos(2.0 * M_PI * Y_test[i]);
+        double true_val = sin(X_test[i]) * sin(2.0 * Y_test[i]);
         printf("%.3f  %.3f  %7.4f  %7.4f\n",
                X_test[i], Y_test[i], mu_pred[i], true_val);
     }
