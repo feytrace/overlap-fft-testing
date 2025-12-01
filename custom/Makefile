@@ -15,6 +15,7 @@ CUDA_ARCH := sm_75
 
 NVCC_FLAGS := -O3 -arch=$(CUDA_ARCH) --use_fast_math -Xcompiler -Wall
 NVCC_DEBUG_FLAGS := -g -G -arch=$(CUDA_ARCH) -Xcompiler -Wall
+GP_TARGET := $(BIN_DIR)/gp_solver
 
 # Directories
 SRC_DIR := .
@@ -32,6 +33,11 @@ SOURCES := solver.cu
 OBJECTS := $(OBJ_DIR)/solver.o
 DEBUG_OBJECTS := $(OBJ_DIR)/solver_debug.o
 
+gp: directories
+	$(NVCC) $(NVCC_FLAGS) gp_cosine_kernel.cu -o $(GP_TARGET)
+
+run-gp: gp
+	./$(GP_TARGET)
 # Default target
 .PHONY: all
 all: directories $(TARGET)
