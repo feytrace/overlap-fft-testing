@@ -482,7 +482,20 @@ int main(int argc, char **argv) {
     }
     
     printf("\n========================================\n\n");
-    
+    // Save training data
+FILE *fp_train = fopen("train_data.txt", "w");
+for (int i = 0; i < N_train; i++) {
+    fprintf(fp_train, "%.6f %.6f %.6f\n", X_train[i], Y_train[i], f_train[i]);
+}
+fclose(fp_train);
+
+// Save test predictions
+FILE *fp_test = fopen("test_data.txt", "w");
+for (int i = 0; i < N_test; i++) {
+    fprintf(fp_test, "%.6f %.6f %.6f\n", X_test[i], Y_test[i], mu_pred[i]);
+}
+fclose(fp_test);
+printf("\n✓ Saved data to train_data.txt and test_data.txt\n");
     // Cleanup
     delete[] X_train;
     delete[] Y_train;
