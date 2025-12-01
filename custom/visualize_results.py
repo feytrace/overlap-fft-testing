@@ -97,7 +97,7 @@ def create_comparison_plots(Nx, Ny, U_computed=None, save_prefix="solver_results
     ax3.set_xlabel('X', fontsize=10)
     ax3.set_ylabel('Y', fontsize=10)
     ax3.set_zlabel('Error', fontsize=10)
-    ax3.set_title(f'Absolute Error\nMax: {np.max(error_abs):.2e}', fontsize=11, fontweight='bold')
+    ax3.set_title('Absolute Error\nMax: {:.2e}'.format(np.max(error_abs)), fontsize=11, fontweight='bold')
     ax3.view_init(elev=30, azim=45)
     fig.colorbar(surf3, ax=ax3, shrink=0.5, aspect=5)
     
@@ -143,7 +143,7 @@ def create_comparison_plots(Nx, Ny, U_computed=None, save_prefix="solver_results
     ax7.plot(X[mid_y, :], U_computed[mid_y, :], 'r--', linewidth=2, label='Computed')
     ax7.set_xlabel('X', fontsize=10)
     ax7.set_ylabel('U', fontsize=10)
-    ax7.set_title(f'Cross-section at y={Y[mid_y, 0]:.2f}', fontsize=11, fontweight='bold')
+    ax7.set_title('Cross-section at y={:.2f}'.format(Y[mid_y, 0]), fontsize=11, fontweight='bold')
     ax7.legend(fontsize=9)
     ax7.grid(True, alpha=0.3)
     
@@ -159,32 +159,34 @@ def create_comparison_plots(Nx, Ny, U_computed=None, save_prefix="solver_results
     l2_error = np.sqrt(np.mean(error**2))
     relative_error = l2_error / np.sqrt(np.mean(U_analytical**2))
     
-    stats_text = f"""
+    stats_text = """
     ERROR STATISTICS
     ════════════════════════════════
     
-    Grid Size: {Nx} × {Ny}
-    Total Points: {Nx * Ny:,}
+    Grid Size: {} × {}
+    Total Points: {:,}
     
     Max Absolute Error:
-        {max_error:.6e}
+        {:.6e}
     
     Mean Absolute Error:
-        {mean_error:.6e}
+        {:.6e}
     
     L2 Error Norm:
-        {l2_error:.6e}
+        {:.6e}
     
     Relative L2 Error:
-        {relative_error:.6e}
-        ({relative_error*100:.4f}%)
+        {:.6e}
+        ({:.4f}%)
     
-    Min Computed: {np.min(U_computed):.6f}
-    Max Computed: {np.max(U_computed):.6f}
+    Min Computed: {:.6f}
+    Max Computed: {:.6f}
     
-    Min Analytical: {np.min(U_analytical):.6f}
-    Max Analytical: {np.max(U_analytical):.6f}
-    """
+    Min Analytical: {:.6f}
+    Max Analytical: {:.6f}
+    """.format(Nx, Ny, Nx * Ny, max_error, mean_error, l2_error, 
+               relative_error, relative_error*100, np.min(U_computed), 
+               np.max(U_computed), np.min(U_analytical), np.max(U_analytical))
     
     ax8.text(0.1, 0.5, stats_text, fontsize=10, family='monospace',
              verticalalignment='center', bbox=dict(boxstyle='round', 
@@ -195,14 +197,14 @@ def create_comparison_plots(Nx, Ny, U_computed=None, save_prefix="solver_results
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     
     # Save figure
-    output_file = f"{save_prefix}.png"
+    output_file = "{}.png".format(save_prefix)
     plt.savefig(output_file, dpi=150, bbox_inches='tight')
-    print(f"\n✓ Saved visualization to: {output_file}")
+    print("\n✓ Saved visualization to: {}".format(output_file))
     
     # Also save high-resolution version
-    output_file_hires = f"{save_prefix}_hires.png"
+    output_file_hires = "{}_hires.png".format(save_prefix)
     plt.savefig(output_file_hires, dpi=300, bbox_inches='tight')
-    print(f"✓ Saved high-res version to: {output_file_hires}")
+    print("✓ Saved high-res version to: {}".format(output_file_hires))
     
     return fig
 
@@ -241,7 +243,7 @@ def create_convergence_plot(sizes, errors, save_name="convergence.png"):
     
     plt.tight_layout()
     plt.savefig(save_name, dpi=150, bbox_inches='tight')
-    print(f"✓ Saved convergence plot to: {save_name}")
+    print("✓ Saved convergence plot to: {}".format(save_name))
     
     return fig
 
@@ -264,12 +266,12 @@ def main():
     if len(sys.argv) > 3:
         solution_file = sys.argv[3]
     
-    print(f"\nGrid Size: {Nx} × {Ny}")
+    print("\nGrid Size: {} × {}".format(Nx, Ny))
     
     # Read computed solution if provided
     U_computed = None
     if solution_file:
-        print(f"Reading solution from: {solution_file}")
+        print("Reading solution from: {}".format(solution_file))
         U_computed = read_solution_from_file(solution_file, Nx, Ny)
         if U_computed is None:
             print("Warning: Could not read solution file, using analytical solution")
