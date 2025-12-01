@@ -399,7 +399,11 @@ int main(int argc, char **argv) {
     printf("Error L2 norm: %.6e\n", error);
     
     printf("\n========================================\n\n");
-    
+    // Save solution to file for visualization
+    FILE *fp = fopen("solution.bin", "wb");
+    fwrite(SOL, sizeof(double), K, fp);
+    fclose(fp);
+
     // Cleanup
     CUDA_CHECK(cudaFreeHost(rhs));
     CUDA_CHECK(cudaFreeHost(UE));

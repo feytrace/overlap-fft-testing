@@ -188,3 +188,11 @@ info:
 	@echo ""
 	@echo "GPU Info:"
 	@nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv
+
+.PHONY: visualize
+visualize: run
+	python visualize_results.py 100 100
+
+.PHONY: visualize-full
+visualize-full: run
+	python visualize_results.py 6000 6050 solution.bin
